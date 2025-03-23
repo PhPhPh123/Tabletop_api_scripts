@@ -1,1 +1,4 @@
 ../Tabletop_api_data_collector/.idea
+.idea
+.env
+/ngrok.log

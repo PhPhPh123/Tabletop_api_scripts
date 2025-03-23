@@ -6,3 +6,4 @@ flasgger
 requests
 flask
 dotenv
+markdown

@@ -1,4 +1,4 @@
-from flask import Flask, request
+from flask import Flask, request, send_from_directory
 import subprocess
 import time
 import requests
@@ -7,11 +7,32 @@ from dotenv import load_dotenv
 import urllib.parse
 import json
 from flasgger import Swagger
+import flasgger
+import markdown
 
 app = Flask(__name__)
 
 # Настройка Swagger
-swagger = Swagger(app)
+swagger_config = {
+    "title": "Tabletop Simulator API by Djo",
+    "description": "API for recording dice rolls in Tabletop Simulator",
+    "version": "1.0.0",
+    "swagger_ui": True,
+    "specs_route": "/apidocs/",
+    "headers": [],
+    "static_url_path": "/flasgger_static",  # Путь для статических файлов
+    "static_dir": os.path.join(os.path.dirname(flasgger.__file__), "static"),  # Путь к встроенным файлам flasgger
+    "specs": [
+        {
+            "endpoint": "apispec_1",
+            "route": "/apispec_1.json",
+            "rule_filter": lambda rule: True,
+            "model_filter": lambda tag: True,
+        }
+    ]
+}
+
+swagger = Swagger(app, config=swagger_config)
 
 # Настройки ngrok
 load_dotenv()
@@ -23,6 +44,35 @@ STATIC_DOMAIN = "relieved-firm-titmouse.ngrok-free.app"
 # Переменная для имитации текущего session_id
 current_session_id = 0
 
+
+# Маршрут для Terms of Service
+@app.route('/tos')
+def terms_of_service():
+    # Читаем файл LICENSE.md
+    license_path = os.path.join(os.path.dirname(__file__), "LICENSE.md")
+
+    with open(license_path, "r", encoding="utf-8") as f:
+        license_text = f.read()
+
+        # Преобразуем Markdown в HTML
+        license_html = markdown.markdown(license_text)
+
+        # Оборачиваем в базовый HTML
+        html_content = f"""
+        <h1>Terms of Service</h1>
+        {license_html}
+        """
+        return html_content
+
+# Маршрут для favicon, чтобы убрать ошибку 404
+@app.route('/favicon.ico')
+def favicon():
+    return send_from_directory(
+        os.path.join(os.path.dirname(flasgger.__file__), "static"),
+        "favicon-32x32.png",
+        mimetype="image/png"
+    )
+
 def start_ngrok():
     if not os.path.exists(NGROK_PATH):
         print(f"Error: {NGROK_PATH} not found!")
@@ -31,7 +81,7 @@ def start_ngrok():
         print("Error: NGROK_TOKEN not found in .env!")
         return None
     print(f"Starting ngrok with token at {NGROK_PATH}...")
-    with open("../PRdamageCollector/ngrok.log", "w") as log_file:
+    with open("ngrok.log", "w") as log_file:
         subprocess.Popen(
             [NGROK_PATH, "http", str(PORT), "--authtoken", NGROK_TOKEN, "--url", STATIC_DOMAIN],
             stdout=log_file,
