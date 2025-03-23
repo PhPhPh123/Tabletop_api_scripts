@@ -1,0 +1,4 @@
+database schema ----https://dbdiagram.io/d/67dfe43e75d75cc8441f3c30
+endpoint -----------https://relieved-firm-titmouse.ngrok-free.app
+ngrok inspect-------http://127.0.0.1:4040/inspect/http ngrok inspect
+swagger docs--------https://relieved-firm-titmouse.ngrok-free.app/apidocs
