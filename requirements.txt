@@ -1,0 +1,8 @@
+psycopg2
+python_dotenv
+pandas
+matplotlib
+flasgger
+requests
+flask
+dotenv
