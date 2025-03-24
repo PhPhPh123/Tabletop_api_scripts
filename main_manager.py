@@ -1,17 +1,17 @@
-from db_layer import DBLayer
-from api_layer import APILayer
-from bot_layer import BotLayer
+from layers.db_layer import DBLayer
+from layers.api_layer import APILayer
+from layers.bot_layer import BotLayer
 import threading
 
 def main():
     # Инициализация слоёв
     db_layer = DBLayer()
     api_layer = APILayer(db_layer)
-    bot_layer = BotLayer()
+    bot_layer = BotLayer(db_layer)  # Передаём db_layer
 
     # Запуск бота в отдельном потоке
     bot_thread = threading.Thread(target=bot_layer.run)
-    bot_thread.daemon = True  # Поток завершится, когда завершится основной процесс
+    bot_thread.daemon = True
     bot_thread.start()
 
     # Запуск ngrok

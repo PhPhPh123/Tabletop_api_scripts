@@ -1,3 +1,4 @@
+
 from flask import Flask, request, send_from_directory
 import subprocess
 import time
@@ -8,7 +9,6 @@ import json
 from flasgger import Swagger
 import flasgger
 import markdown
-
 
 class APILayer:
     def __init__(self, db_layer):
@@ -52,7 +52,7 @@ class APILayer:
 
         @self.app.route('/tos')
         def terms_of_service():
-            license_path = os.path.join(os.path.dirname(__file__), "LICENSE.md")
+            license_path = os.path.join(os.path.dirname(__file__), "..", "LICENSE.md")
             with open(license_path, "r", encoding="utf-8") as f:
                 license_text = f.read()
 
@@ -152,12 +152,23 @@ class APILayer:
     def setup_ngrok(self):
         load_dotenv()
         self.NGROK_TOKEN = os.getenv("ngrok")
-        self.NGROK_PATH = os.path.join(os.path.dirname(__file__), "ngrok.exe")
+        # Путь к ngrok.exe в папке ngrok_files
+        self.NGROK_PATH = os.path.join(os.path.dirname(__file__), "..", "ngrok_files", "ngrok.exe")
+        # Проверяем, существует ли ngrok.exe
+        if not os.path.exists(self.NGROK_PATH):
+            print(f"Error: ngrok.exe not found at {self.NGROK_PATH}. Please ensure it is placed in the ngrok_files directory.")
+            self.NGROK_PATH = None
         self.PORT = 5000
         self.STATIC_DOMAIN = "relieved-firm-titmouse.ngrok-free.app"
 
     def start_ngrok(self):
-        with open("ngrok.log", "w") as log_file:
+        if not self.NGROK_PATH:
+            print("APILayer: Cannot start ngrok because ngrok.exe is missing.")
+            return None
+
+        # Путь к ngrok.log в папке ngrok_files
+        log_file_path = os.path.join(os.path.dirname(__file__), "..", "ngrok_files", "ngrok.log")
+        with open(log_file_path, "w") as log_file:
             subprocess.Popen(
                 [self.NGROK_PATH, "http", str(self.PORT), "--authtoken", self.NGROK_TOKEN, "--url", self.STATIC_DOMAIN],
                 stdout=log_file,
@@ -176,7 +187,7 @@ class APILayer:
                     return public_url
             except requests.ConnectionError:
                 time.sleep(1)
-        print("APILayer: Failed to get ngrok URL after 15 seconds. Check ngrok.log.")
+        print(f"APILayer: Failed to get ngrok URL after 15 seconds. Check {log_file_path} for details.")
         return None
 
     def run(self):
