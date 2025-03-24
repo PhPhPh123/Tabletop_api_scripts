@@ -1,76 +1,30 @@
-# main_manager.py
-import logging
+from db_layer import DBLayer
 from api_layer import APILayer
-from db_layer import DatabaseLayer
+from bot_layer import BotLayer
+import threading
 
-# Настройка логирования
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.FileHandler("app.log"),
-        logging.StreamHandler()
-    ]
-)
+def main():
+    # Инициализация слоёв
+    db_layer = DBLayer()
+    api_layer = APILayer(db_layer)
+    bot_layer = BotLayer()
 
-class MainManager:
-    def __init__(self):
-        self.logger = logging.getLogger("MainManager")
-        self.api_layer = None
-        self.db_layer = None
+    # Запуск бота в отдельном потоке
+    bot_thread = threading.Thread(target=bot_layer.run)
+    bot_thread.daemon = True  # Поток завершится, когда завершится основной процесс
+    bot_thread.start()
 
-    def initialize_db_layer(self):
-        self.logger.info("Initializing Database layer...")
-        try:
-            self.db_layer = DatabaseLayer()
-        except Exception as e:
-            self.logger.error(f"Failed to initialize Database layer: {e}")
-            raise
-        return self
+    # Запуск ngrok
+    public_url = api_layer.start_ngrok()
+    if not public_url:
+        db_layer.close()
+        return
 
-    def initialize_api_layer(self):
-        self.logger.info("Initializing API layer...")
-        try:
-            self.api_layer = APILayer(self.db_layer)
-        except Exception as e:
-            self.logger.error(f"Failed to initialize API layer: {e}")
-            raise
-        return self
-
-    def start_ngrok(self):
-        self.logger.info("Starting ngrok...")
-        try:
-            self.api_layer.start_ngrok()
-        except Exception as e:
-            self.logger.error(f"Failed to start ngrok: {e}")
-            raise
-        return self
-
-    def run_api(self):
-        self.logger.info("Starting API layer...")
-        try:
-            self.api_layer.run()
-        except Exception as e:
-            self.logger.error(f"Failed to run API layer: {e}")
-            raise
-        return self
-
-    def run(self):
-        self.logger.info("Starting application...")
-        self.initialize_db_layer()\
-            .initialize_api_layer()\
-            .start_ngrok()\
-            .run_api()
-
-    def shutdown(self):
-        if self.db_layer:
-            self.db_layer.close()
-        self.logger.info("Application shutdown.")
+    # Запуск Flask-сервера
+    try:
+        api_layer.run()
+    finally:
+        db_layer.close()
 
 if __name__ == "__main__":
-    manager = MainManager()
-    try:
-        manager.run()
-    except Exception as e:
-        manager.logger.error(f"Application failed: {e}")
-        manager.shutdown()
+    main()

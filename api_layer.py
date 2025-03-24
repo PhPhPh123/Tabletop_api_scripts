@@ -4,7 +4,6 @@ import time
 import requests
 import os
 from dotenv import load_dotenv
-import urllib.parse
 import json
 from flasgger import Swagger
 import flasgger
@@ -54,9 +53,6 @@ class APILayer:
         @self.app.route('/tos')
         def terms_of_service():
             license_path = os.path.join(os.path.dirname(__file__), "LICENSE.md")
-            if not os.path.exists(license_path):
-                return "<h1>Error</h1><p>License file not found!</p>", 404
-
             with open(license_path, "r", encoding="utf-8") as f:
                 license_text = f.read()
 
@@ -84,7 +80,6 @@ class APILayer:
                       type: string
                       example: success
             """
-            print("APILayer: Received /start_session request")
             session_id = self.db_layer.start_session()
             self.current_session_id = session_id
             print(f"APILayer: Session started, session_id: {session_id}")
@@ -133,19 +128,13 @@ class APILayer:
                       type: string
                       example: No active session
             """
-            print("APILayer: Received /roll request")
             if not self.current_session_id:
                 print("APILayer: Error: No active session! Please start a session with 'start'.")
                 return {"error": "No active session"}, 400
 
-            raw_body = request.get_data(as_text=True)
-            print(f"APILayer: Raw request body: {raw_body}")
-            decoded_body = urllib.parse.unquote(raw_body)
-            print(f"APILayer: Decoded body: {decoded_body}")
             try:
-                data = json.loads(decoded_body)
-            except json.JSONDecodeError as e:
-                print(f"APILayer: Error decoding JSON: {e}")
+                data = request.get_json()
+            except Exception:
                 return {"error": "Invalid JSON"}, 400
 
             roll_data = {
@@ -157,7 +146,7 @@ class APILayer:
             self.db_layer.record_roll(roll_data)
 
             print(
-                f"APILayer: Roll received: player={data['player']}, results={data['results']}, total={data['total']}, session_id={self.current_session_id}")
+                f"APILayer: Roll recorded: player={data['player']}, total={data['total']}, session_id={self.current_session_id}")
             return {"status": "success"}, 200
 
     def setup_ngrok(self):
@@ -168,13 +157,6 @@ class APILayer:
         self.STATIC_DOMAIN = "relieved-firm-titmouse.ngrok-free.app"
 
     def start_ngrok(self):
-        if not os.path.exists(self.NGROK_PATH):
-            print(f"APILayer: Error: {self.NGROK_PATH} not found!")
-            return None
-        if not self.NGROK_TOKEN:
-            print("APILayer: Error: NGROK_TOKEN not found in .env!")
-            return None
-        print(f"APILayer: Starting ngrok with token at {self.NGROK_PATH}...")
         with open("ngrok.log", "w") as log_file:
             subprocess.Popen(
                 [self.NGROK_PATH, "http", str(self.PORT), "--authtoken", self.NGROK_TOKEN, "--url", self.STATIC_DOMAIN],

@@ -1,31 +1,63 @@
 -- Скрипт вставляется в зону Global в Tabletop Simulator
 
-local ZONE_GUID = "fc6f55" -- GUID зоны для броска кубика
+
+local ZONE_GUID = "e84e08" -- GUID твоей зоны (замени на актуальный GUID)
 local diceResults = {}
 local zone = nil
 local errorShown = false
 local sessionActive = false
 
 function onLoad()
-    zone = getObjectFromGUID(ZONE_GUID)
-    if zone and zone.type == "ScriptingTrigger" then
-        print("Zone loaded successfully: " .. ZONE_GUID)
-    else
-        print("Error: Could not find or invalid zone with GUID " .. ZONE_GUID)
-        zone = nil
+    print("onLoad: Starting initialization...")
+    local attempts = 0
+    local maxAttempts = 10
+    local function tryLoadZone()
+        attempts = attempts + 1
+        print("onLoad: Attempt " .. attempts .. " to load zone with GUID: " .. ZONE_GUID)
+        zone = getObjectFromGUID(ZONE_GUID)
+        if zone then
+            print("onLoad: Zone found, type: " .. zone.type)
+            if zone.type == "Scripting" then -- Принимаем зону типа Scripting
+                print("Zone loaded successfully: " .. ZONE_GUID)
+                -- Проверяем, работает ли getObjects()
+                local objects = zone.getObjects()
+                print("onLoad: Objects in zone: " .. #objects)
+                for _, obj in ipairs(objects) do
+                    print("onLoad: Object in zone, type: " .. obj.type .. ", GUID: " .. obj.getGUID())
+                end
+            else
+                print("Error: Zone is not a Scripting zone, type: " .. zone.type)
+                zone = nil
+            end
+        else
+            if attempts < maxAttempts then
+                Wait.time(tryLoadZone, 1) -- Пробуем снова через 1 секунду
+            else
+                print("Error: Could not find zone with GUID " .. ZONE_GUID .. " after " .. maxAttempts .. " attempts")
+                zone = nil
+            end
+        end
     end
+    tryLoadZone()
 end
 
 function onObjectRandomize(obj, player_color)
-    if not zone then return end
+    print("onObjectRandomize: Object randomized, GUID: " .. obj.getGUID())
+    if not zone then
+        print("onObjectRandomize: Zone is nil, skipping...")
+        return
+    end
     if isDiceInZone(obj, zone) then
+        print("onObjectRandomize: Dice is in zone, player: " .. Player[player_color].steam_name)
         local player = Player[player_color].steam_name
         local function checkDiceStopped()
             if obj.getVelocity().x == 0 and obj.getVelocity().y == 0 and obj.getVelocity().z == 0 then
                 local result = obj.getValue()
                 diceResults[obj.getGUID()] = result
+                print("onObjectRandomize: Dice stopped, result: " .. result)
 
                 local diceInZone = getDiceInZone(zone)
+                print("onObjectRandomize: Dice in zone: " .. #diceInZone)
                 if #diceInZone ~= 3 then
                     if not errorShown then
                         print("Error: There must be exactly 3 dice in the zone! Found: " .. #diceInZone)
@@ -38,6 +70,12 @@ function onObjectRandomize(obj, player_color)
                 errorShown = false
 
                 if hasAllDiceStopped(diceInZone) then
+                    print("onObjectRandomize: All dice stopped, processing results...")
+                    if not sessionActive then
+                        print("Warning: Dice rolled without an active session! Please use 'start' to begin a session.")
+                        diceResults = {}
+                        return
+                    end
                     sendResults(player, diceInZone)
                 end
             else
@@ -45,12 +83,16 @@ function onObjectRandomize(obj, player_color)
             end
         end
         Wait.frames(checkDiceStopped, 30)
+    else
+        print("onObjectRandomize: Dice not in zone, skipping...")
     end
 end
 
 function isDiceInZone(dice, zone)
     local objects = zone.getObjects()
+    print("isDiceInZone: Checking if dice is in zone, dice GUID: " .. dice.getGUID())
     for _, obj in ipairs(objects) do
+        print("isDiceInZone: Found object in zone, type: " .. obj.type .. ", GUID: " .. obj.getGUID())
         if obj == dice and obj.type == "Dice" then
             return true
         end
@@ -78,12 +120,6 @@ function hasAllDiceStopped(diceList)
 end
 
 function sendResults(player, diceList)
-    if not sessionActive then
-        print("Error: No active session! Please start a session with 'start'.")
-        diceResults = {}
-        errorShown = false
-        return
-    end
     local total = 0
     local results = {}
     for _, dice in ipairs(diceList) do
@@ -97,14 +133,17 @@ function sendResults(player, diceList)
         total = total
     }
     local jsonData = JSON.encode(rollData)
+    print("sendResults: Sending data: " .. jsonData)
     WebRequest.post(
         "https://relieved-firm-titmouse.ngrok-free.app/roll",
         jsonData,
         function(response)
             if response.is_error then
-                print("Error: " .. response.error)
+                print("sendResults: Error: " .. response.error)
             else
-                print(player .. " rolled a total of " .. total)
+                -- Выводим только итоговый результат в чат
+                broadcastToAll(player .. " rolled a total of " .. total, {1, 1, 1})
+                print("sendResults: Success: Data sent to server")
             end
         end,
         { ["Content-Type"] = "application/json" }
@@ -115,16 +154,16 @@ end
 
 function onChat(message, player)
     if message:lower() == "start" and player.host then
-        print("Starting new session...")
+        print("onChat: Starting new session...")
         WebRequest.post(
             "https://relieved-firm-titmouse.ngrok-free.app/start_session",
             "{}",
             function(response)
                 if response.is_error then
-                    print("Error starting session: " .. response.error)
+                    print("onChat: Error starting session: " .. response.error)
                 else
                     sessionActive = true
-                    print("New session started!")
+                    print("onChat: New session started!")
                 end
             end,
             { ["Content-Type"] = "application/json" }
