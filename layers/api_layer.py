@@ -85,6 +85,28 @@ class APILayer:
             print(f"APILayer: Session started, session_id: {session_id}")
             return {"status": "success"}, 200
 
+        @self.app.route('/end_session', methods=['POST'])
+        def end_session():
+            """
+            End current session
+            ---
+            tags:
+              - Session
+            responses:
+              200:
+                description: Session ended successfully
+                schema:
+                  type: object
+                  properties:
+                    status:
+                      type: string
+                      example: success
+            """
+            self.db_layer.end_session()  # Завершаем последнюю сессию
+            self.current_session_id = 0
+            print("APILayer: Session ended")
+            return {"status": "success"}, 200
+
         @self.app.route('/roll', methods=['POST'])
         def roll():
             """

@@ -169,4 +169,21 @@ function onChat(message, player)
             { ["Content-Type"] = "application/json" }
         )
     end
+
+    if message:lower() == "end" and player.host then
+        print("onChat: Session ended...")
+        WebRequest.post(
+            "https://relieved-firm-titmouse.ngrok-free.app/end_session",
+            "{}",
+            function(response)
+                if response.is_error then
+                    print("onChat: Error ended session: " .. response.error)
+                else
+                    sessionActive = true
+                    print("onChat: session closed!")
+                end
+            end,
+            { ["Content-Type"] = "application/json" }
+        )
+    end
 end

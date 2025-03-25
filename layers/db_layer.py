@@ -1,5 +1,5 @@
 import psycopg2
-from datetime import datetime
+from datetime import datetime, timedelta
 from dotenv import load_dotenv
 import os
 
@@ -12,14 +12,40 @@ class DBLayer:
         self.cursor = self.conn.cursor()
 
     def start_session(self):
+        session_start = datetime.now()
+        session_end = session_start + timedelta(hours=2.5)  # Добавляем 2.5 часа
         self.cursor.execute(
-            "INSERT INTO sessions (session_start) VALUES (%s) RETURNING id",
-            (datetime.now(),)
+            "INSERT INTO sessions (session_start, session_end) VALUES (%s, %s) RETURNING id",
+            (session_start, session_end)
         )
         session_id = self.cursor.fetchone()[0]
         self.conn.commit()
         print(f"DBLayer: Session created with id: {session_id}")
         return session_id
+
+    def end_session(self):
+        session_end = datetime.now()
+        # Находим запись с самым большим id
+        self.cursor.execute(
+            "SELECT id FROM sessions ORDER BY id DESC LIMIT 1"
+        )
+        result = self.cursor.fetchone()
+        if not result:
+            print("DBLayer: No sessions found to end")
+            return
+
+        session_id = result[0]
+        # Обновляем session_end для последней сессии
+        self.cursor.execute(
+            "UPDATE sessions SET session_end = %s WHERE id = %s",
+            (session_end, session_id)
+        )
+        if self.cursor.rowcount == 0:
+            print(f"DBLayer: Failed to update session with id: {session_id}")
+        else:
+            self.conn.commit()
+            print(f"DBLayer: Session {session_id} ended at {session_end}")
+
 
     def get_or_create_user(self, username):
         self.cursor.execute(
@@ -138,4 +164,28 @@ class DBLayer:
                 JOIN users u ON r.user_id = u.id
                 GROUP BY u.user_name
             """)
+
+    def get_session_durations(self):
+        self.cursor.execute(
+            """
+            SELECT id, 
+                   EXTRACT(EPOCH FROM (session_end - session_start)) / 3600 AS duration_hours
+            FROM sessions
+            WHERE session_end IS NOT NULL
+            ORDER BY id
+            """
+        )
+        return self.cursor.fetchall()
+
+    def get_weekly_session_durations(self):
+        self.cursor.execute(
+            """
+            SELECT DATE_TRUNC('week', session_start) AS week_start,
+                   SUM(EXTRACT(EPOCH FROM (session_end - session_start)) / 3600) AS total_hours
+            FROM sessions
+            WHERE session_end IS NOT NULL
+            GROUP BY DATE_TRUNC('week', session_start)
+            ORDER BY DATE_TRUNC('week', session_start)
+            """
+        )
         return self.cursor.fetchall()

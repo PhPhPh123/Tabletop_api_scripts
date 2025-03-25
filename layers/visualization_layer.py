@@ -70,6 +70,36 @@ class VisualizationLayer:
 
         return filename
 
+    def plot_session_durations(self, by_week=False, filename="session_durations.png"):
+        plt.figure(figsize=(10, 6))
+
+        if by_week:
+            # Вариант 2: по неделям
+            data = self.db_layer.get_weekly_session_durations()
+            df = pd.DataFrame(data, columns=["week_start", "total_hours"])
+            plt.plot(df["week_start"], df["total_hours"], marker="o")
+            plt.xlabel("Неделя")
+            plt.ylabel("Общая длительность (часы)")
+            plt.title("Длительность игровых сессий по неделям")
+            plt.xticks(rotation=45)
+        else:
+            # Вариант 1: по сессиям
+            data = self.db_layer.get_session_durations()
+            df = pd.DataFrame(data, columns=["session_id", "duration_hours"])
+            plt.plot(df["session_id"], df["duration_hours"], marker="o")
+            plt.xlabel("номер сессии")
+            plt.ylabel("Длительность (часы)")
+            plt.title("Длительность игровых сессий")
+
+        # Добавляем форматирование оси Y для отображения только целых чисел
+        plt.gca().xaxis.set_major_locator(plt.MaxNLocator(integer=True))
+
+        plt.grid(True)
+        plt.tight_layout()
+        plt.savefig(filename)
+        plt.close()
+        return filename
+
     def save_all_plots(self):
         """Сохраняет все вариации графиков в папку test_all_charts."""
         os.makedirs("../test_all_charts", exist_ok=True)

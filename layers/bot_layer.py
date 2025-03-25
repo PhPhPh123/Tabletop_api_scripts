@@ -95,6 +95,18 @@ class BotLayer:
                 picture = discord.File(f)
                 await interaction.followup.send(file=picture)
 
+        # Регистрируем слеш-команду /sessionduration
+        @self.tree.command(name="sessionduration",
+                           description="Показывает линейный график длительности игровых сессий")
+        @discord.app_commands.describe(by_week="Показать данные по неделям? (true/false)")
+        async def session_duration(interaction: discord.Interaction, by_week: bool = False):
+            await interaction.response.send_message("Генерирую график длительности сессий...")
+            loop = asyncio.get_event_loop()
+            filename = await loop.run_in_executor(None, self.viz_layer.plot_session_durations, by_week)
+            with open(filename, "rb") as f:
+                picture = discord.File(f)
+                await interaction.followup.send(file=picture)
+
         # Регистрируем слэш-команду /help
         @self.tree.command(name="help", description="Показывает список доступных команд и их параметры")
         async def help_command(interaction: discord.Interaction):
