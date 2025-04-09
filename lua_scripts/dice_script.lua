@@ -1,5 +1,6 @@
 -- Скрипт вставляется в зону Global в Tabletop Simulator
-
+-- Данный скрипт осуществляет первичный сбор данных и вызов api команд. Он работает на внутренней логике
+-- Tabletop Simulator и ограчен ею
 
 local ZONE_GUID = "e84e08" -- GUID твоей зоны (замени на актуальный GUID)
 local diceResults = {}
@@ -170,7 +171,7 @@ function onChat(message, player)
         )
     end
 
-    if message:lower() == "end" and player.host then
+    if message:lower() == "end" and player.host and sessionActive then
         print("onChat: Session ended...")
         WebRequest.post(
             "https://relieved-firm-titmouse.ngrok-free.app/end_session",

@@ -1,3 +1,8 @@
+'''
+Данный модуль управляет приёмом сообщений из Tabletop Simulator через endpoint созданный на Flask-сервере,
+проброшенный NGROK на статический адрес. Регистрационные данные находятся в файле .env
+'''
+
 
 from flask import Flask, request, send_from_directory
 import subprocess
@@ -9,15 +14,24 @@ import json
 from flasgger import Swagger
 import flasgger
 import markdown
+from urllib.parse import unquote
+import pika
 
 class APILayer:
-    def __init__(self, db_layer):
+    def __init__(self, db_layer, broker_layer):
         self.app = Flask(__name__)
         self.db_layer = db_layer
         self.current_session_id = 0
         self.setup_swagger()
         self.setup_routes()
         self.setup_ngrok()
+        self.broker_layer = broker_layer
+
+    def connect_to_rabbitmq(self):
+        # Устанавливаем соединение с RabbitMQ один раз при инициализации
+        self.connection = pika.BlockingConnection(pika.ConnectionParameters('localhost'))
+        self.channel = self.connection.channel()
+        self.channel.queue_declare(queue='game_data', durable=True)
 
     def setup_swagger(self):
         swagger_config = {
@@ -80,10 +94,15 @@ class APILayer:
                       type: string
                       example: success
             """
-            session_id = self.db_layer.start_session()
-            self.current_session_id = session_id
-            print(f"APILayer: Session started, session_id: {session_id}")
-            return {"status": "success"}, 200
+            try:
+                # Синхронный вызов DBLayer.start_session
+                session_id = self.db_layer.start_session()
+                self.current_session_id = session_id
+                print(f"APILayer: Session started with ID: {session_id}")
+                return {"status": "success", "session_id": session_id}, 200
+            except Exception as e:
+                print(f"APILayer: Error starting session: {e}")
+                return {"error": "Failed to start session"}, 500
 
         @self.app.route('/end_session', methods=['POST'])
         def end_session():
@@ -102,10 +121,13 @@ class APILayer:
                       type: string
                       example: success
             """
-            self.db_layer.end_session()  # Завершаем последнюю сессию
-            self.current_session_id = 0
-            print("APILayer: Session ended")
-            return {"status": "success"}, 200
+            try:
+                self.broker_layer.process_request("end_session", {})
+                print("APILayer: End session request sent")
+                return {"status": "Session end queued"}, 200
+            except Exception as e:
+                print(f"APILayer: Error ending session: {e}")
+                return {"error": "Failed to end session"}, 500
 
         @self.app.route('/roll', methods=['POST'])
         def roll():
@@ -154,10 +176,27 @@ class APILayer:
                 print("APILayer: Error: No active session! Please start a session with 'start'.")
                 return {"error": "No active session"}, 400
 
+                # Получаем сырые данные как строку
+            raw_data = request.get_data(as_text=True)
+            if not raw_data:
+                print("APILayer: Error: No data received")
+                return {"error": "No data provided"}, 400
+
+            # Декодируем URL-encoded строку
+            decoded_data = unquote(raw_data)
+            print("APILayer: Decoded data: " + decoded_data)
+
+            # Проверяем, что данные — это валидный JSON
             try:
-                data = request.get_json()
-            except Exception:
+                data = json.loads(decoded_data)
+            except json.JSONDecodeError:
+                print("APILayer: Error: Decoded data is not valid JSON: " + decoded_data)
                 return {"error": "Invalid JSON"}, 400
+
+            # Проверяем наличие обязательных полей
+            if not all(key in data for key in ["player", "results", "total"]):
+                print("APILayer: Error: Missing required fields in JSON: " + decoded_data)
+                return {"error": "Missing required fields (player, results, total)"}, 400
 
             roll_data = {
                 "player": data['player'],
@@ -167,9 +206,14 @@ class APILayer:
             }
             self.db_layer.record_roll(roll_data)
 
-            print(
-                f"APILayer: Roll recorded: player={data['player']}, total={data['total']}, session_id={self.current_session_id}")
-            return {"status": "success"}, 200
+            try:
+                self.broker_layer.process_request("roll", roll_data)
+                print(f"APILayer: Roll data sent: {roll_data}")
+                return {"status": "success"}, 200
+            except Exception as e:
+                print(f"APILayer: Error processing roll: {e}")
+                return {"error": "Failed to process roll data"}, 500
+
 
     def setup_ngrok(self):
         load_dotenv()
@@ -206,6 +250,7 @@ class APILayer:
                     print(f"APILayer: Ngrok tunnel started: {public_url}")
                     print(f"APILayer: Use this endpoint in TTS: {public_url}/roll")
                     print(f"APILayer: Swagger UI available at: {public_url}/apidocs")
+                    print(f"APILayer: RabbitMQ at http://localhost:15672")
                     return public_url
             except requests.ConnectionError:
                 time.sleep(1)

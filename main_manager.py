@@ -1,12 +1,14 @@
 from layers.db_layer import DBLayer
 from layers.api_layer import APILayer
 from layers.bot_layer import BotLayer
+from layers.msg_broker_layer import MsgBrokerLayer
 import threading
 
 def main():
     # Инициализация слоёв
     db_layer = DBLayer()
-    api_layer = APILayer(db_layer)
+    broker_layer = MsgBrokerLayer(db_layer)  # Добавляем MsgBrokerLayer
+    api_layer = APILayer(db_layer, broker_layer)
     bot_layer = BotLayer(db_layer)  # Передаём db_layer
 
     # Запуск бота в отдельном потоке
